@@ -1,0 +1,116 @@
+
+installpkg <- function(x){
+  if(x %in% rownames(installed.packages())==FALSE) {
+    if(x %in% rownames(available.packages())==FALSE) {
+      paste(x,"is not a valid package - please check again...")
+    } else {
+      install.packages(x)           
+    }
+    
+  } else {
+    paste(x,"package already installed...")
+  }
+}
+
+FPR_TPR <- function(prediction, actual){
+  
+  TP <- sum((prediction)*(actual))
+  FP <- sum((prediction)*(!actual))
+  FN <- sum((!prediction)*(actual))
+  TN <- sum((!prediction)*(!actual))
+  recall<-TP / (TP + FN)
+  precision<-TP/(TP+FP)
+  result <- data.frame( FPR = FP / (FP + TN), TPR = TP / (TP + FN), ACC = (TP+TN)/(TP+TN+FP+FN),F1= 2*recall*precision/(recall+precision))
+  
+  return (result)
+}
+
+BinaryAccuracy <- function(prediction, actual){
+
+  TP <- sum((prediction)*(actual))
+  FP <- sum((prediction)*(!actual))
+  FN <- sum((!prediction)*(actual))
+  TN <- sum((!prediction)*(!actual))
+  result <-  (TP+TN)/(TP+TN+FP+FN) 
+  
+  return (result)
+}
+
+deviance <- function(y, pred, family=c("gaussian","binomial")){
+  family <- match.arg(family)
+  if(family=="gaussian"){
+    return( sum( (y-pred)^2 ) )
+  }else{
+    if(is.factor(y)) y <- as.numeric(y)>1
+    return( -2*sum( y*log(pred) + (1-y)*log(1-pred) ) )
+  }
+}
+
+devianceQR <- function(y, pred, tau){
+  return( sum(  tau*max(0, y-pred ) + (1-tau)*max(0, pred-y ) ) )
+  
+}
+
+## get null devaince too, and return R2
+R2 <- function(y, pred, family=c("gaussian","binomial")){
+  fam <- match.arg(family)
+  if(fam=="binomial"){
+    if(is.factor(y)){ y <- as.numeric(y)>1 }
+  }
+  dev <- deviance(y, pred, family=fam)
+  dev0 <- deviance(y, mean(y), family=fam)
+  return(1-dev/dev0)
+}
+
+
+support<- function(x, tr = 10e-6) {
+  m<- rep(0, length(x))
+  for (i in 1:length(x)) if( abs(x[i])> tr ) m[i]<- i
+  m <- m[m>0]
+  m
+}
+
+lambda.BC<- function(X, R = 1000, tau = 0.5, c = 1, alpha = .05){
+  n <- nrow(X)
+  norm2n<-function(z){sqrt(mean(z^2))}
+  sigs <- apply(X,2,norm2n)
+  U <- matrix(runif(n * R),n)
+  R <- (t(X) %*% (tau - (U < tau)))/(sigs*sqrt(tau*(1-tau)))
+  r <- apply(abs(R),2,max)
+  c * quantile(r, 1 - alpha) * sqrt(tau*(1-tau))*c(1,sigs)
+}
+
+kIC <- function(fit, rule=c("A","B","C")){
+  df <- length(fit$centers) # K*dim
+  n <- sum(fit$size)
+  D <- fit$tot.withinss # deviance
+  rule=match.arg(rule)
+  if(rule=="A")
+    #return(D + 2*df*n/max(1,n-df-1))
+    return(D + 2*df)
+  else if(rule=="B") 
+    return(D + log(n)*df)
+  else 
+    return(D +  sqrt( n * log(df) )*df)
+}
+
+fdr_cut <- function(pvals, q){
+  pvals <- pvals[!is.na(pvals)]
+  n <- length(pvals)
+  
+  j <- rank(pvals, ties.method="min")
+  sig <- pvals <= q*j/n
+  sig[pvals<=max(pvals[sig])] <- TRUE
+  
+  
+  ind <- which( pvals > 0 )
+  o <- order(pvals)
+  oo <- o[o %in% ind]
+  
+  plot( (n-length(oo)+1):n, pvals[oo], log="xy", col=c("grey60","red")[sig[o]+1], pch=20, 
+        ylab="p-values", xlim = c(1,n), xlab="Tests ordered by p-value", main = paste('FDR with q =',q))
+  lines(1:n, q*(1:n)/n)
+  
+  return(max(pvals[sig]))
+}
+
